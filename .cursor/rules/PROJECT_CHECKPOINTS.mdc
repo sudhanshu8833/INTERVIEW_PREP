@@ -1,0 +1,247 @@
+---
+description: Live 7-week (49-day) subproject roadmap and checklist for the low-latency C++ / HFT engineering portfolio. Reference this to know current progress, what's next, each SP's mandatory/optional status, and its required output.
+globs:
+alwaysApply: true
+---
+
+# Low-Latency C++ / HFT Engineering Track — Checkpoints
+
+Ordered by **skill transfer to low-latency market-data engineering**, not raw difficulty.
+
+**Legend**
+- `[x]` done · `[~]` in progress · `[ ]` not done
+- 🔴 **Mandatory** (core portfolio signal) · 🟡 **Optional / stretch** (don't block on it)
+- Each **SP** (subproject) is one unit of the `start_the_subproject.mdc` loop (I explain → you build a bad
+  version → I critique) and must produce a **concrete Output** — a binary, a report, a graph, a validated
+  run. No SP without a demonstrable artifact.
+- **Hard budget: 49 days / 7 weeks total** across SP 1–14 (Phase 0 already done). Estimates are calibrated
+  from real evidence, not guesswork: SP 1.1 was originally scoped 3–5 days and actually took **~1 day** —
+  so these numbers assume that pace, not the original (3–5x too conservative) estimates.
+
+> ⚠️ Phase 6 (DPDK) has a genuine **hardware dependency** (DPDK-compatible NIC + hugepage-capable bare-metal
+> box) that isn't compressible by working faster — acquiring/provisioning it is an external-world step, not
+> a coding step. It's the one place this 7-week budget could slip for reasons outside engineering speed.
+
+---
+
+## Phase 0 — Foundations Already Built  ✅
+
+> Extracted transferable socket/framing skills. **Do NOT extend further** — next steps move to binary/UDP.
+
+- [x] 🔴 Single-threaded HTTP implementation
+- [x] 🔴 WebSockets implementation (handshake, frame encode/decode, epoll multi-connection)
+
+---
+
+## 7-Week Budget at a Glance
+
+| Phase | SPs | Days | Running total |
+|---|---|---|---|
+| 1 — Benchmark Suite | SP 1–2 | 6 | 6 |
+| 2 — ITCH Parser | SP 3–4 | 7 | 13 |
+| 3 — Order Book ⭐ | SP 5–7 | 10 | 23 |
+| 4 — epoll Feed / Replay | SP 8–9 | 6 | 29 |
+| 5 — Ring Buffer | SP 10 | 4 | 33 |
+| 6 — DPDK ⚠️ hardware-gated | SP 11–12 | 10 | 43 |
+| 7 — FIX | SP 13–14 | 6 | **49** |
+
+---
+
+## Phase 1 — Cost-of-Operations Benchmark Suite  (6 days)
+
+> The measurement instrument reused by every later project. **Tooling: Google Benchmark** for the harness —
+> but be able to explain `DoNotOptimize`/`ClobberMemory` (= `asm volatile` + memory clobber) under the hood.
+
+### SP 1 — Harness + DCE barriers + measurement rigor  ⏱ 3 d
+- [~] 🔴 CMake + Google Benchmark building & linking in Release (Docker/Linux) — **done**
+- [~] 🔴 `DoNotOptimize` / `ClobberMemory` verified via asm that the loop is NOT elided/hoisted — **done**
+      (found + fixed a real loop-invariant-hoisting bug, confirmed `mul` executes per-iteration in the asm)
+- [~] 🔴 Core pinning (`pthread_setaffinity_np`) — **done**; `performance` governor — **deliberately deferred**
+      to real bare-metal hardware (blocked in Docker/VM: no host-level sysfs write access without
+      `--privileged`, and even then it's the VM's governor, not the physical host's)
+- [~] 🔴 Percentiles p50 / p99 / p99.9 / p99.99 — **done** via manual raw-sample collection (`steady_clock`
+      per-iteration + `std::sort` + index lookup), not GB's `ComputeStatistics` (which only computes stats
+      over per-repetition means, not raw per-op samples — verified this distinction matters via a worked
+      example before building)
+- [ ] 🟡 `rdtsc` with serializing fences + TSC calibration vs `steady_clock` — **deferred**: x86-only, current
+      dev environment is `aarch64` (Apple Silicon Docker); forcing `--platform=linux/amd64` would only give
+      emulated x86 (Rosetta/QEMU), which produces scientifically meaningless nanosecond-scale timing data.
+      Revisit on real x86 hardware.
+- **Output:** a `bench` binary that prints a p50/p99/p99.9/p99.99 percentile table for a trivial op,
+  runnable via one Docker command, with core pinning set (governor deferred, see above).
+
+### SP 2 — Hardware cost report  ⏱ 3 d
+- [~] 🔴 Memory-hierarchy latency: pointer-chase (dependent-load) benchmark — **mechanism done**. Built a
+      closed random-cycle pointer chase (defeats prefetcher), swept working set via `SIZE` (= distinct cache
+      lines touched, NOT `ARRAY_SIZE`), verified clean monotonic step: ~1.75ns (6KB, L1) → ~5.6ns (64KB, L1
+      boundary) → ~27.7ns (640KB, L2, incl. TLB-miss overhead). No L3 on Apple Silicon (only L1+L2 exposed).
+      **Remaining:** confirm the DRAM step (SIZE~1M, ARRAY_SIZE~16M), and only P50 is trustworthy in the
+      Docker VM (tail = scheduling noise) — full L1→L2→L3→DRAM curve + real numbers come from the bare-metal
+      x86 re-run (see Phase 6 / SP 11).
+- [~] 🔴 Cache-line effects (stride) — **done w/ caveat.** Finding: constant-stride is prefetched, so
+      stride-1 and stride-16 both run ~1-2ns/access even over 400MB DRAM — prefetcher hides the line penalty.
+      Randomizing stride defeats it (~13-17ns) but conflates line-use with miss latency + in-loop RNG noise.
+      Net: naive stride can't isolate the 64B-line cost on modern HW; false sharing shows it cleanly instead.
+- [~] 🔴 False sharing — **mechanism done, effect unobservable in VM.** Two pinned threads increment adjacent
+      vs `alignas(64)`-padded atomics; shared (16B) and padded (128B) came out identical (~36ms) because the
+      2-vCPU virtualized box can't guarantee two *real* parallel physical cores (hypervisor co-schedules /
+      time-slices → no cross-core coherency traffic → no ping-pong). Code is correct; hardware can't show it.
+      ⏳ **REVISIT ON BARE METAL (SP 11):** re-run padded vs non-padded once on real dedicated cores (no core
+      flipping / vCPU sharing) — expect padded to be several-x faster; that's the number for the report.
+- [x] 🔴 Branch misprediction — **done, works on VM** (single-threaded/CPU-local). ~50/50 threshold; unsorted
+      (unpredictable) ~17x slower than sorted (predictable). Kept a real branch (not `csel`) by putting the
+      `DoNotOptimize` barrier *inside* the `if` body (volatile side effect can't be branchless-selected).
+- [ ] 🟡 Virtual-call vs direct-call overhead
+- **Output:** consolidated report (markdown + graphs). ⏳ **DEFERRED until after the bare-metal re-run (SP 11):**
+  cache-line, false-sharing, and the real memory-hierarchy/governor numbers only exist on bare metal, so the
+  report is assembled once, from trustworthy numbers, then — not from VM placeholders.
+
+---
+
+## Phase 2 — ITCH Parser on Recorded Market Data  (7 days)
+
+> Real protocol + recorded data = a correctness oracle FIX-over-live-broker can't give.
+
+### SP 3 — Parser core  ⏱ 4 d
+- [ ] 🔴 Download historical/sample NASDAQ TotalView-ITCH (or equivalent public binary spec)
+- [ ] 🔴 Message-framing loop over the byte stream
+- [ ] 🔴 Fixed-offset parsing: add / delete / execute / replace-order (all four, not just add)
+- [ ] 🔴 Big-endian / network-byte-order field decoding
+- [ ] 🔴 Zero-copy parsing directly from a mapped buffer (`mmap`)
+- **Output:** `itch_parse <file>` CLI that prints the decoded message stream from recorded sample data.
+
+### SP 4 — Correctness + throughput  ⏱ 3 d
+- [ ] 🔴 Validate reconstructed invariants vs recorded feed (no negative qty, consistent order IDs, sequence continuity)
+- [ ] 🔴 Throughput + per-message latency benchmarked with the Phase 1 harness
+- **Output:** a validation report (pass/fail per invariant) + a throughput number (msgs/sec, ns/msg).
+
+---
+
+## Phase 3 — Limit Order Book  ⭐ CENTERPIECE  (10 days)
+
+> One deep, continuously-optimized book beats several shallow projects. Target of every later upgrade.
+
+### SP 5 — Correctness-first book  ⏱ 4 d
+- [ ] 🔴 `std::map` price levels, driven by the Phase 2 parser (all four message types)
+- [ ] 🔴 Book-state validated against recorded data
+- **Output:** a replay tool reconstructing final book state, diffed against ground truth.
+
+### SP 6 — Cache-optimized rewrite  ⏱ 4 d
+- [ ] 🔴 Flat-array / intrusive-container price levels (migrate off `std::map`)
+- [ ] 🔴 Hot/cold data separation: top-of-book compact & contiguous; deep levels stored separately
+- [ ] 🔴 Zero allocations on the update hot path — **proven** via aborting `operator new` in the hot loop
+- **Output:** a before/after benchmark graph (`std::map` vs flat array) + a zero-alloc proof log.
+
+### SP 7 — Sequence-gap handling  ⏱ 2 d
+- [ ] 🔴 Sequence-gap detection
+- [ ] 🟡 Simulated A/B feed arbitration (two feeds, injected drops/jitter, first-wins merge) — if time allows
+- **Output:** a replay run with deliberately injected drops, showing gaps detected and logged.
+
+---
+
+## Phase 4 — epoll Feed Client / Replay Server  (6 days)
+
+> epoll is legit signal but **not** the final hot-path answer — the busy-poll comparison matters more.
+
+### SP 8 — Replay server + epoll client  ⏱ 4 d
+- [ ] 🔴 Replay server streaming recorded ITCH over UDP (mirrors multicast) at controllable rates. No TLS
+      (real feeds aren't encrypted — correct simplification)
+- [ ] 🔴 epoll-based client consuming the stream, driving the Phase 3 book live
+- **Output:** an end-to-end demo — start the replay server, watch the client print a live top-of-book.
+
+### SP 9 — Transport latency comparison  ⏱ 2 d
+- [ ] 🔴 kernel `recv`/`recvfrom` vs epoll vs busy-poll (spin-read), measured with the Phase 1 harness
+- **Output:** the comparison graph — the single highest-value result artifact for the interview portfolio.
+
+---
+
+## Phase 5 — SPSC Lock-Free Ring Buffer  (4 days)
+
+### SP 10 — Ring buffer + pipeline integration  ⏱ 4 d
+- [ ] 🔴 SPSC ring w/ atomics + `acquire`/`release` ordering (not full seq-cst)
+- [ ] 🔴 Cache-line padding between producer/consumer indices (prevent false sharing)
+- [ ] 🔴 Wired end-to-end: network thread → ring → book thread, both core-pinned
+- **Output:** measured hand-off latency (added/removed by the ring buffer), end-to-end pipeline demo.
+
+---
+
+## Phase 6 — DPDK UDP Receiver (Kernel-Bypass Endgame)  🟡 ⚠️ hardware-gated  (10 days)
+
+> Reach only after the book is correct, measured & understood at the epoll layer.
+> **Dependency risk:** needs a DPDK-compatible NIC (Intel X520/X710-class) + hugepage-capable bare-metal box
+> — not achievable on a laptop. This acquisition step can slip the 7-week budget independent of coding pace.
+>
+> **Bare-metal re-calibration:** the moment this box is provisioned, before any DPDK-specific work, re-run
+> every measurement from Phase 1 (SP 1's percentile harness, core pinning, `performance` governor — including
+> the pieces explicitly deferred earlier because Docker/VM couldn't do them — and SP 2's full hardware cost
+> report) natively on that hardware: no Docker, no virtualization layer. Everything measured so far ran under
+> at least one layer of indirection (Docker Desktop's VM on Apple Silicon, plus the earlier caveat that even
+> real cloud instances are normally KVM-virtualized unless `.metal`) — those numbers were for verifying
+> mechanism/correctness only, never treated as trustworthy absolute latency figures. This re-run is what
+> produces the numbers that actually go in the README/portfolio.
+
+### SP 11 — DPDK bring-up  ⏱ 5 d
+- [ ] 🟡 DPDK-compatible NIC + hugepage configuration
+- [ ] 🟡 DPDK "hello world" RX
+- [ ] 🔴 Re-run Phase 1 (SP 1 + SP 2) in full on this bare-metal box — governor now actually settable,
+      `rdtsc` now real x86 hardware, no VM/hypervisor jitter — these become the numbers reported everywhere
+- **Output:** a DPDK app printing raw captured Ethernet frames + a refreshed Phase 1 report with real
+  bare-metal numbers, superseding the earlier Docker-based results.
+
+### SP 12 — Frame capture → pipeline + final comparison  ⏱ 5 d
+- [ ] 🟡 Raw Ethernet frame capture in userspace → existing ITCH/book pipeline (UDP only, no custom TCP)
+- [ ] 🟡 Full 4-transport percentile graph (kernel → epoll → busy-poll → DPDK)
+- [ ] 🟡 perf/VTune pass + ≥1 profiling-driven optimization, re-measured
+- **Output:** the final comparison graph + a written profiling note (the capstone result artifact).
+
+---
+
+## Phase 7 — FIX Protocol Implementation  🟡 (personal goal)  (6 days)
+
+> **Caveat:** FIX is tag=value ASCII, order-entry, string-parsing — **not** low-latency systems work, and not
+> meaningfully latency-benchmarkable as a retail individual. Scope it as *"I can read the spec and build a
+> correct engine."* Don't let it displace the 🔴 phases.
+
+### SP 13 — Parser + framing + core messages  ⏱ 4 d
+- [ ] 🟡 tag=value fields, SOH (`0x01`) delimiter, `BeginString`/`BodyLength`/`CheckSum`; checksum validation
+- [ ] 🟡 Admin messages: Logon (A) / Heartbeat (0) / TestRequest (1) / Logout (5)
+- [ ] 🟡 App messages: NewOrderSingle (D) / ExecutionReport (8) / OrderCancelRequest (F)
+- **Output:** a FIX encode/decode CLI that round-trips sample messages with checksum validation.
+
+### SP 14 — Session layer + correctness oracle  ⏱ 2 d
+- [ ] 🟡 Sequence numbers, gap-fill / resend, heartbeat interval
+- [ ] 🟡 Validate against QuickFIX for a handful of sample messages
+- **Output:** a session demo (sequence tracking + heartbeat) cross-checked against QuickFIX output.
+
+---
+
+## Parallel Track (continuous, not gated, not part of the 49-day budget)
+
+- [ ] 🔴 learncpp.com — OOP, smart pointers, move semantics, templates
+- [ ] 🔴 Probability / mental-math / EV puzzles (Indian HFT interviews weight this heavily — no project covers it)
+- [ ] 🟡 OS internals depth (scheduler, page faults, NUMA, interrupts; Brendan Gregg *Systems Performance*)
+- [ ] 🟡 Codeforces rating (needs a *concrete* rating to count at stretch firms)
+
+---
+
+## Production-Grade Polish (fold into the relevant SPs as you go — not separate days)
+
+**Measurement & Evidence (highest priority)**
+- [ ] 🔴 Published latency histograms in README (p50/p99/p99.9/p99.99) + hardware, flags, methodology
+- [ ] 🔴 CI regression benchmarks (fail if p99 degrades past threshold)
+- [ ] 🔴 Correctness validation vs recorded feed as an automated first-class check
+
+**Hot-Path Discipline**
+- [ ] 🔴 Zero allocations proven via counting/aborting allocator override
+- [ ] 🔴 No exceptions / no virtual dispatch on hot path (templates/CRTP + error codes), reasoning documented
+- [ ] 🔴 Cache-conscious layout with measured before/after
+
+**Operational Polish**
+- [ ] 🟡 Design doc explaining decisions + measured justification
+- [ ] 🟡 Single reproducibility script (governor, core isolation, thread pin, run, report)
+- [ ] 🟡 Written perf/VTune analysis of one concrete optimization
+
+### ❌ Explicitly Avoid (signals web-backend habits)
+Config-file frameworks · synchronous logging on hot path · **Docker** · microservice decomposition.
+
+> ⚠️ Docker used for dev builds (Linux-only epoll/DPDK on macOS) is a convenience — keep it out of the *final* repo.
