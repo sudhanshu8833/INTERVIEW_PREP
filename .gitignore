@@ -1,0 +1,5 @@
+**/partial.gz
+**/sample_itch50.bin
+*.gz
+*.bin
+build/

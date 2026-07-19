@@ -47,7 +47,12 @@ void AddOrder::print_struct(){
     std::cout<< ss.str()<<std::endl;
 }
 
-
+void AddOrder::validate_info(){
+    if(this->timestamp <= 0) std::cerr << "timestamp must be > 0" << std::endl;
+    if(this->ref <= 0) std::cerr << "ref must be > 0" << std::endl;
+    if(this->price <= 0) std::cerr << "price must be > 0" << std::endl;
+    if(this->side != 'B' && this->side != 'S') std::cerr << "side must be B or S" << std::endl;
+}
 
 void ExecutedOrder::print_struct(){
     std::ostringstream ss;
@@ -56,6 +61,12 @@ void ExecutedOrder::print_struct(){
     ss<< "ref: " << this->ref << std::endl;
     ss<< "executed_shares: "<< this->executed_shares << std::endl;
     std::cout<< ss.str()<<std::endl;
+}
+
+void ExecutedOrder::validate_info(){
+    if(this->timestamp <= 0) std::cerr << "timestamp must be > 0" << std::endl;
+    if(this->ref <= 0) std::cerr << "ref must be > 0" << std::endl;
+    if(this->executed_shares <= 0) std::cerr << "executed_shares must be > 0" << std::endl;
 }
 
 void ExecutedWithPriceOrder::print_struct(){
@@ -68,6 +79,13 @@ void ExecutedWithPriceOrder::print_struct(){
     std::cout<< ss.str()<<std::endl;
 }
 
+void ExecutedWithPriceOrder::validate_info(){
+    if(this->timestamp <= 0) std::cerr << "timestamp must be > 0" << std::endl;
+    if(this->ref <= 0) std::cerr << "ref must be > 0" << std::endl;
+    if(this->executed_shares <= 0) std::cerr << "executed_shares must be > 0" << std::endl;
+    if(this->execution_price <= 0) std::cerr << "execution_price must be > 0" << std::endl;
+}
+
 void CancelOrder::print_struct(){
     std::ostringstream ss;
     ss<< "Cancel Order Information: "<<std::endl;
@@ -77,12 +95,23 @@ void CancelOrder::print_struct(){
     std::cout<< ss.str()<<std::endl;
 }
 
+void CancelOrder::validate_info(){
+    if(this->timestamp <= 0) std::cerr << "timestamp must be > 0" << std::endl;
+    if(this->ref <= 0) std::cerr << "ref must be > 0" << std::endl;
+    if(this->cancelled_shares <= 0) std::cerr << "cancelled_shares must be > 0" << std::endl;
+}
+
 void DeleteOrder::print_struct(){
     std::ostringstream ss;
     ss<< "Delete Order Information: "<<std::endl;
     ss<< "timestamp: "<< this->timestamp<<std::endl;
     ss<< "ref: " << this->ref << std::endl;
     std::cout<< ss.str()<<std::endl;
+}
+
+void DeleteOrder::validate_info(){
+    if(this->timestamp <= 0) std::cerr << "timestamp must be > 0" << std::endl;
+    if(this->ref <= 0) std::cerr << "ref must be > 0" << std::endl;
 }
 
 
@@ -97,6 +126,14 @@ void ReplaceOrder::print_struct(){
     std::cout<< ss.str()<<std::endl;
 }
 
+void ReplaceOrder::validate_info(){
+    if(this->timestamp <= 0) std::cerr << "timestamp must be > 0" << std::endl;
+    if(this->ref <= 0) std::cerr << "ref must be > 0" << std::endl;
+    if(this->new_ref <= 0) std::cerr << "new_ref must be > 0" << std::endl;
+    if(this->shares <= 0) std::cerr << "shares must be > 0" << std::endl;
+    if(this->price <= 0) std::cerr << "price must be > 0" << std::endl;
+}
+
 AddOrder ParseAddOrderMessage(const unsigned char* message){
     std::string_view sym(reinterpret_cast<const char*>(&message[0] + 24), 8);
     sym = sym.substr(0, sym.find_last_not_of(' ') + 1);
@@ -104,7 +141,7 @@ AddOrder ParseAddOrderMessage(const unsigned char* message){
         read_be48(&message[5]),
         std::string(sym),
         read_be64(&message[11]),
-        static_cast<float>(read_be32(&message[32]) / 10000.0),
+        read_be32(&message[32]),
         read_be32(&message[20]),
         message[19]
     };
@@ -125,7 +162,7 @@ ExecutedWithPriceOrder ParseExecutedWithPriceOrderMessage(const unsigned char* m
         read_be48(&message[5]),
         read_be64(&message[11]),
         read_be32(&message[19]),
-        static_cast<float>(read_be32(&message[32]) / 10000.0)
+        read_be32(&message[32])
     };
     return o;
 }
@@ -152,7 +189,7 @@ ReplaceOrder ParseReplaceOrder(const unsigned char* message){
         read_be64(&message[11]),
         read_be64(&message[19]),
         read_be32(&message[27]),
-        static_cast<float>(read_be32(&message[31]) / 10000.0)
+        read_be32(&message[31])
     };
     return o;
 }

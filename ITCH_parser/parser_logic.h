@@ -1,15 +1,19 @@
 #ifndef PARSER
 #define PARSER
 
+#include <cstdint>
+
 struct AddOrder{
     uint64_t timestamp;
     std::string stock;
     uint64_t ref;
-    float price;
+    uint32_t price;
     uint32_t shares;
     char side;  // B or S;
 
     void print_struct();
+
+    void validate_info();
 };
 
 struct ExecutedOrder{
@@ -18,15 +22,19 @@ struct ExecutedOrder{
     uint32_t executed_shares;
 
     void print_struct();
+
+    void validate_info();
 };
 
 struct ExecutedWithPriceOrder{
     uint64_t timestamp;
     uint64_t ref;
     uint32_t executed_shares;
-    float execution_price;
+    uint32_t execution_price;
 
     void print_struct();
+
+    void validate_info();
 };
 
 struct CancelOrder{
@@ -35,6 +43,8 @@ struct CancelOrder{
     uint32_t cancelled_shares;
 
     void print_struct();
+
+    void validate_info();
 };
 
 struct DeleteOrder{
@@ -42,6 +52,8 @@ struct DeleteOrder{
     uint64_t ref;
 
     void print_struct();
+
+    void validate_info();
 };
 
 
@@ -50,9 +62,11 @@ struct ReplaceOrder{
     uint64_t ref;
     uint64_t new_ref;
     uint32_t shares;
-    float price;
+    uint32_t price;
 
     void print_struct();
+
+    void validate_info();
 };
 
 

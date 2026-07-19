@@ -103,17 +103,24 @@ Ordered by **skill transfer to low-latency market-data engineering**, not raw di
 > Real protocol + recorded data = a correctness oracle FIX-over-live-broker can't give.
 
 ### SP 3 — Parser core  ⏱ 4 d
-- [ ] 🔴 Download historical/sample NASDAQ TotalView-ITCH (or equivalent public binary spec)
-- [ ] 🔴 Message-framing loop over the byte stream
-- [ ] 🔴 Fixed-offset parsing: add / delete / execute / replace-order (all four, not just add)
-- [ ] 🔴 Big-endian / network-byte-order field decoding
-- [ ] 🔴 Zero-copy parsing directly from a mapped buffer (`mmap`)
+- [x] 🔴 Download historical/sample NASDAQ TotalView-ITCH (or equivalent public binary spec)
+- [x] 🔴 Message-framing loop over the byte stream
+- [x] 🔴 Fixed-offset parsing: add / delete / execute / replace-order (all four, not just add) — A/F/E/C/X/D/U decoding
+- [x] 🔴 Big-endian / network-byte-order field decoding
+- [x] 🔴 Zero-copy parsing directly from a mapped buffer (`mmap`)
 - **Output:** `itch_parse <file>` CLI that prints the decoded message stream from recorded sample data.
+      ⚠️ **Nearly there:** decoding works, but the input path is still hardcoded (`sample_itch50.bin`) — needs `argv[1]` to be the `itch_parse <file>` CLI.
 
 ### SP 4 — Correctness + throughput  ⏱ 3 d
-- [ ] 🔴 Validate reconstructed invariants vs recorded feed (no negative qty, consistent order IDs, sequence continuity)
-- [ ] 🔴 Throughput + per-message latency benchmarked with the Phase 1 harness
-- **Output:** a validation report (pass/fail per invariant) + a throughput number (msgs/sec, ns/msg).
+- [~] 🔴 Validate reconstructed invariants vs recorded feed (no negative qty, consistent order IDs, sequence continuity)
+      — per-message field checks written (`validate_info`: qty>0, price>0, ref!=0, side∈{B,S}) but NOT wired into the
+      parse loop; cross-message invariants (consistent order IDs, timestamp/sequence continuity) deferred to SP5's book diff
+- [x] 🔴 Throughput + per-message latency benchmarked with the Phase 1 harness — **p50 23 ns/msg (~43 M msg/s)
+      WITH `DoNotOptimize`** (the trustworthy figure: the barrier stops the compiler eliding the discarded parse),
+      p99 63 ns, p99.9 96 ns. WITHOUT `DoNotOptimize` reads faster — p50 15 / p99 62 / p99.9 131 ns — but that's
+      DCE-contaminated (optimizer deletes discarded work), so it's NOT the number to quote. Warm + batch-and-divide
+      over 1.7 M msgs; tail includes Docker VM scheduling jitter (p50 trustworthy).
+- **Output:** ~~validation report~~ (descoped) + throughput number ✅ (p50 23 ns/msg, ~43 M msg/s, `DoNotOptimize`).
 
 ---
 
