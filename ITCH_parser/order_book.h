@@ -9,6 +9,7 @@
 
 struct OrderBookNode{
     uint64_t shares = 0;
+    uint32_t price = 0;
 };
 
 enum class OrderStatus: uint8_t {
@@ -44,7 +45,7 @@ struct book_map {
     std::vector<std::pair<uint32_t, uint32_t>> ask = {};
 
     inline void print_struct(){
-        std::cout<<"#########################################"<<std::endl;
+        // std::cout<<"#########################################"<<std::endl;
         int count = 1;
         for(auto a: ask){
             std::cout<< "ASK "<< count<<": price: "<< (a.first / 10000.0)<<" quantity: "<< a.second<<std::endl;
@@ -78,12 +79,14 @@ class OrderBook {
         void delete_order(DeleteOrder &d);
         void replace_order(ReplaceOrder &r);
 
-        book_map get_book(std::string sym, int levels);
+        book_map get_book(uint16_t stock_locate, int levels);
+        void add_to_book(std::vector<OrderBookNode> &book_array, uint32_t limit_price, uint32_t shares); 
+        void delete_from_book(std::vector<OrderBookNode> &book_array, uint32_t limit_price, uint32_t shares);
 
     private:
         std::unordered_map<uint64_t, Order> order_map;
-        std::map<std::string, std::map<uint32_t,OrderBookNode>> bid;
-        std::map<std::string, std::map<uint32_t,OrderBookNode>> ask;
+        std::map<uint16_t, std::vector<OrderBookNode>> bid;
+        std::map<uint16_t, std::vector<OrderBookNode>> ask;
 };
 
 #endif
