@@ -22,8 +22,8 @@ enum class OrderStatus: uint8_t {
 void error_with_log(std::string_view s);
 
 struct Order{
+    uint16_t stock_locate;
     uint64_t ref;
-    std::string sym;
     uint64_t add_timestamp;
     uint64_t execute_timestamp = 0;
     uint64_t delete_timestamp = 0;
@@ -70,7 +70,7 @@ struct book_map {
 
 class OrderBook {
     public:
-        OrderBook() = default;
+        OrderBook(int max_stock_locate);
         ~OrderBook() = default;
         void add_order(AddOrder &o);
         void execute_order(ExecutedOrder &e);
@@ -85,8 +85,8 @@ class OrderBook {
 
     private:
         std::unordered_map<uint64_t, Order> order_map;
-        std::map<uint16_t, std::vector<OrderBookNode>> bid;
-        std::map<uint16_t, std::vector<OrderBookNode>> ask;
+        std::vector<std::vector<OrderBookNode>> bid;
+        std::vector<std::vector<OrderBookNode>> ask;
 };
 
 #endif

@@ -1,6 +1,7 @@
 FROM ubuntu:24.04
 
-RUN apt-get update && apt-get install -y g++ cmake make git
+RUN apt-get update && apt-get install -y g++ cmake make git valgrind linux-tools-generic && \
+    ln -sf "$(ls /usr/lib/linux-tools-*/perf | head -1)" /usr/local/bin/perf
 
 # Build Google Benchmark from source, forcing Release
 RUN git clone --depth 1 https://github.com/google/benchmark.git /tmp/benchmark && \

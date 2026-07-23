@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <cstdio>
 #include "parser_logic.h"
-#include "order_book.h"
+#include "order_book_fast.h"
 #include <string_view>
 #define SAMPLE_SIZE 100
 
@@ -35,10 +35,14 @@ const unsigned char* get_bin_to_char_ds(int fd, size_t size){
     return data;
 }
 
-int parse_message(const unsigned char* data, int size, int max_stock_locate){
-    int i =0;
+int parse_message(const unsigned char* data, int size){
+    int i = 0;
     int count = 0;
-    OrderBook order_book {max_stock_locate};
+
+    uint16_t max_stock_locate = FindMaxStockLocateCode(data, static_cast<size_t>(size));
+    std::cout<< "Max stock locate "<< max_stock_locate<<std::endl;
+
+    OrderBook order_book{max_stock_locate};
     while(i < size){
         int length = read_be16(&data[i]);
         count++;
@@ -95,9 +99,9 @@ int parse_message(const unsigned char* data, int size, int max_stock_locate){
             }
         }
 
-        if (count % 100 == 0){
-            book_map b = order_book.get_book(393, 10);
-            b.validate_book();
+        if (count % 10 == 0){
+            book_map b = order_book.get_book(static_cast<uint16_t>(8047),10);
+            // b.print_struct();
         }
         i+=length;
     }
@@ -116,7 +120,6 @@ int main(){
 
 
     std::vector<double> result;
-    int max_stock_locate = FindMaxStockLocateCode(data, static_cast<size_t>(size));
 
     int sam_size = SAMPLE_SIZE;
     int current_count = 1;
@@ -124,7 +127,7 @@ int main(){
         std::cout<<"Sample Count: "<< current_count<<std::endl;
         current_count++;
         auto t0 = std::chrono::steady_clock::now();
-        int message_count = parse_message(data, size - 50, max_stock_locate);
+        int message_count = parse_message(data, size - 50);
         auto t1 = std::chrono::steady_clock::now();
     
         auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
@@ -137,12 +140,12 @@ int main(){
     std::unordered_map<std::string, double> m{
         {"50", 0.50 * SAMPLE_SIZE},
         {"99", 0.99 * SAMPLE_SIZE},
-        {"99.9", 0.999 * SAMPLE_SIZE}
+        // {"99.9", 0.999 * SAMPLE_SIZE}
     };
 
     ss<< "50th percentile: "<< result[(int)m["50"]]<<std::endl;
     ss << "99th percentile: "<< result[(int)m["99"]] << std::endl;
-    ss<< "99.9 percentile: "<< result[(int)m["99.9"]] << std::endl;
+    // ss<< "99.9 percentile: "<< result[(int)m["99.9"]] << std::endl;
     std::cout<< ss.str()<<std::endl;
 
     return 0;

@@ -23,7 +23,7 @@ fi
 # --- compile + run inside a throwaway container ---
 # Source (and build/) are bind-mounted from the host, so your edits are "transported"
 # live and cmake recompiles ONLY the changed files. Container is discarded (--rm).
-docker run --rm -v "$(pwd):/app" "$IMAGE" \
+docker run --rm --privileged -v "$(pwd):/app" "$IMAGE" \
     sh -c "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release >/dev/null && \
            cmake --build build && \
            ./build/$TARGET"

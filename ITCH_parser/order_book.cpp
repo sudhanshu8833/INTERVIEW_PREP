@@ -9,19 +9,36 @@ void error_with_log(std::string_view message){
     exit(1);
 }
 
+OrderBook::OrderBook(int max_stock_locate): 
+    bid(max_stock_locate + 1),
+    ask(max_stock_locate + 1)
+{}
+
 void OrderBook::add_to_book(std::vector<OrderBookNode> &book_array, uint32_t limit_price, uint32_t shares){
     int i = 0;
+    bool added = false;
     for(auto &p: book_array){
         if (p.price == limit_price){
             p.shares += shares;
+            added = !added;
+            break;
         } else if (p.price > limit_price){
             OrderBookNode node {
                 .shares = shares,
                 .price = limit_price,
             };
             book_array.insert(book_array.begin() + i, node);
+            added = !added;
+            break;
         }
         i++;
+    }
+    if (!added){
+        OrderBookNode node {
+            .shares = shares,
+            .price = limit_price
+        };
+        book_array.push_back(node);
     }
 }
 
@@ -32,11 +49,11 @@ void OrderBook::delete_from_book(std::vector<OrderBookNode> &book_array, uint32_
 
             if (p->shares == 0){
                 book_array.erase(p);
-                continue;
             }
             if (p->shares < 0){
                 error_with_log("book desynced");
             }
+            break;
         } else if (p->price > limit_price){
             error_with_log("limit price not present");
         }
@@ -48,7 +65,6 @@ void OrderBook::add_order(AddOrder &o){
     Order ord {
         .stock_locate = o.stock_locate,
         .ref = o.ref,
-        .sym = o.stock,
         .add_timestamp = o.timestamp,
         .limit_price = o.price,
         .side = o.side,
@@ -151,14 +167,12 @@ void OrderBook::replace_order(ReplaceOrder &r){
         .timestamp = r.timestamp,
         .ref = r.ref
     };
-    std::string sym = order_node.sym;
     char side = order_node.side;
     this->delete_order(d);
 
     AddOrder o {
         .stock_locate = r.stock_locate,
         .timestamp = r.timestamp,
-        .stock = sym, 
         .ref = r.new_ref, 
         .price = r.price,
         .shares = r.shares,
@@ -170,23 +184,23 @@ void OrderBook::replace_order(ReplaceOrder &r){
 book_map OrderBook::get_book(uint16_t stock_locate, int levels){
     book_map bm {};
 
-    auto bid_book = this->bid.find(stock_locate);
+    auto &bid_book = this->bid[stock_locate];
 
-    if (bid_book != this->bid.end()){
+    if (!bid_book.empty()){
         int count = 0;
-        auto &bid_book_array = bid_book -> second;
-        for(auto it = bid_book_array.rbegin(); it != bid_book_array.rend() && count< levels; ++it, ++count){
+        for(auto it = bid_book.rbegin(); it != bid_book.rend() && count< levels; ++it, ++count){
             bm.bid.push_back({it->price, it->shares});
         }    
     }
 
-    auto ask_book = this->ask.find(stock_locate);
-    if (ask_book != this->ask.end()){
+    auto& ask_book = this->ask[stock_locate];
+    if (!ask_book.empty()){
         int count = 0;
-        auto &ask_book_array = ask_book -> second;
-        for(auto it = ask_book_array.rbegin(); it != ask_book_array.rend() && count< levels; ++it, ++count){
-            bm.ask.push_back({it->price, it->shares});
+        for(auto it = ask_book.begin(); it != ask_book.end() && count< levels; ++it, ++count){
+            bm.bid.push_back({it->price, it->shares});
         }    
     }
+
+
     return bm;
 }

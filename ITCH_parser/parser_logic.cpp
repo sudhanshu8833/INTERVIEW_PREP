@@ -40,7 +40,6 @@ void AddOrder::print_struct(){
     ss<< "Add Order Information: "<<std::endl;
     ss<< "stock_locate: "<< this->stock_locate<<std::endl;
     ss<< "timestamp: "<< this->timestamp<<std::endl;
-    ss<< "stock: "<< this->stock<<std::endl;
     ss<< "ref: " << this->ref << std::endl;
     ss<< "price: "<< this-> price << std::endl;
     ss << "shares: "<< this-> shares << std::endl;
@@ -146,7 +145,6 @@ AddOrder ParseAddOrderMessage(const unsigned char* message){
     AddOrder o{
         .stock_locate = read_be16(&message[1]),
         .timestamp = read_be48(&message[5]),
-        .stock = std::string(sym),
         .ref = read_be64(&message[11]),
         .price = read_be32(&message[32]),
         .shares = read_be32(&message[20]),
@@ -204,4 +202,28 @@ ReplaceOrder ParseReplaceOrder(const unsigned char* message){
         .price = read_be32(&message[31])
     };
     return o;
+}
+
+uint16_t FindMaxStockLocateCode(const unsigned char* data, size_t size){
+    uint16_t max_stock_locate = 0;
+    size_t i = 0;
+    while(i + 2 <= size){
+        uint16_t length = read_be16(&data[i]);
+        if(length == 0 || i + 2 + length > size) break;   // truncated / malformed
+        const unsigned char* payload = &data[i + 2];
+        char type = payload[0];
+
+        // Order messages only start after the start-of-day admin spins finish.
+        if(type=='A'||type=='F'||type=='E'||type=='C'||type=='X'||
+           type=='D'||type=='U'||type=='P'||type=='Q'){
+            break;
+        }
+
+        if(type == 'R'){
+            // Stock Directory: stock locate at offset 1, symbol at offset 11.
+            max_stock_locate = std::max(max_stock_locate, read_be16(&payload[1]));
+        }
+        i += 2 + length;
+    }
+    return max_stock_locate;
 }

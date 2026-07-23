@@ -7,7 +7,6 @@
 struct AddOrder{
     uint16_t stock_locate;
     uint64_t timestamp;
-    std::string stock;
     uint64_t ref;
     uint32_t price;
     uint32_t shares;
