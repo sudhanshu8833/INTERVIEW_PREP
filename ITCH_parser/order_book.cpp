@@ -2,6 +2,7 @@
 #include "order_book.h"
 #include <map>
 #include <cassert>
+#include <algorithm>
 
 
 void error_with_log(std::string_view message){
@@ -15,49 +16,36 @@ OrderBook::OrderBook(int max_stock_locate):
 {}
 
 void OrderBook::add_to_book(std::vector<OrderBookNode> &book_array, uint32_t limit_price, uint32_t shares){
-    int i = 0;
-    bool added = false;
-    for(auto &p: book_array){
-        if (p.price == limit_price){
-            p.shares += shares;
-            added = !added;
-            break;
-        } else if (p.price > limit_price){
-            OrderBookNode node {
-                .shares = shares,
-                .price = limit_price,
-            };
-            book_array.insert(book_array.begin() + i, node);
-            added = !added;
-            break;
+    auto it = std::lower_bound(
+        book_array.begin(), book_array.end(), limit_price, 
+        [](const OrderBookNode& node, uint32_t price){
+            return node.price < price;
         }
-        i++;
-    }
-    if (!added){
+    );
+
+    if (it != book_array.end() && it->price == limit_price){
+        it->shares += shares;
+    } else {
         OrderBookNode node {
             .shares = shares,
             .price = limit_price
         };
-        book_array.push_back(node);
+        book_array.insert(it, node);
     }
 }
 
 void OrderBook::delete_from_book(std::vector<OrderBookNode> &book_array, uint32_t limit_price, uint32_t shares){
-    for(auto p = book_array.begin(); p != book_array.end();){
-        if (p->price == limit_price){
-            p->shares -= shares;
-
-            if (p->shares == 0){
-                book_array.erase(p);
-            }
-            if (p->shares < 0){
-                error_with_log("book desynced");
-            }
-            break;
-        } else if (p->price > limit_price){
-            error_with_log("limit price not present");
+    auto it = std::lower_bound(
+        book_array.begin(), book_array.end(), limit_price, 
+        [](const OrderBookNode& node, uint32_t price){
+            return node.price < price;
         }
-        ++p;
+    );
+
+    if (it != book_array.end() && it->price == limit_price){
+        it->shares += shares;
+    } else {
+        error_with_log("no limit price present");
     }
 }
 

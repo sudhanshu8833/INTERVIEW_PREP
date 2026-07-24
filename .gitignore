@@ -6,3 +6,4 @@ build/
 **/build/
 **/result.md
 results.md
+.cursor/
